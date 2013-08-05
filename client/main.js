@@ -13,7 +13,7 @@ function init() {
 (function (doc, nav) {
   "use strict";
 
-  var audio, video, width, height, context;
+  var div, audio, video, width, height, context;
   var bufidx = 0, buffers = [];
 
   function initialize() {
@@ -22,6 +22,7 @@ function init() {
     video = doc.getElementById("v");
     width = video.width;
     height = video.height;
+      div = document.getElementById("d");
 
     // The target canvas.
     var canvas = doc.getElementById("c");
@@ -74,6 +75,8 @@ function init() {
     // Pick the next buffer (round-robin).
     var buffer = buffers[bufidx++ % buffers.length];
 
+	var nChanged = 0;
+
     for (var i = 0, j = 0; i < buffer.length; i++, j += 4) {
       // Determine lightness value.
       var current = lightnessValue(data[j], data[j + 1], data[j + 2]);
@@ -81,12 +84,18 @@ function init() {
       // Set color to black.
       data[j] = data[j + 1] = data[j + 2] = 0;
 
+	var changed = lightnessHasChanged(i, current);
+	if (changed) 
+	    nChanged ++;
+
       // Full opacity for changes.
       data[j + 3] = 255 * lightnessHasChanged(i, current);
 
       // Store current lightness value.
       buffer[i] = current;
     }
+
+      div.innerHTML = nChanged;
   }
 
   function lightnessHasChanged(index, value) {
