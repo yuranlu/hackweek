@@ -6,6 +6,11 @@ var ts = new TimeSeries();
 times = ts;
 var ts2 = new TimeSeries();
 times2 = ts2;
+varray = new Array();
+aarray = new Array();
+vsum = 0;
+asum = 0;
+psum = 0;
 buflen = 1024;
 buf = new Uint8Array( buflen );
 
@@ -135,7 +140,7 @@ function convertToMono( input ) {
 	    buffer[i] = current;
 	}
 	f++;
-	div.innerHTML = nChanged;
+
 	analyser.getByteTimeDomainData( buf );
 	var size = 0;
 	for (var i=0; i<buflen; i++) {
@@ -144,6 +149,24 @@ function convertToMono( input ) {
 		foo = -foo;
 	    size += foo;
 	}
+
+	aarray.push(size);
+	asum += size;
+	varray.push(nChanged);
+	vsum += nChanged;
+	psum += size * nChanged;
+
+	if (aarray.length > 100) {
+	    var oldsize = aarray.shift();
+	    var oldnChanged = varray.shift();
+	    asum -= oldsize;
+	    vsum -= oldnChanged;
+	    psum -= oldsize*oldnChanged;
+	    
+	    var score = psum*10000/(vsum*asum);
+	    div.innerHTML = score;
+	}
+
 	times2.append(new Date().getTime(), size);
 	times.append(new Date().getTime(), nChanged);
     }
