@@ -1,3 +1,4 @@
+
 times = null;
 streamsource = null;
 audioContext = null;
@@ -8,12 +9,43 @@ var ts2 = new TimeSeries();
 times2 = ts2;
 varray = new Array();
 aarray = new Array();
+abuffer = new Array();
 vsum = 0;
 asum = 0;
 psum = 0;
-buflen = 1024;
+buflen = 2048;
 buf = new Uint8Array( buflen );
+framerate = 0;
+foo = null;
+tstamp = function () {
+    return new Date().getTime();
+}
 
+scorebuffer = new Array();
+totalscore = 0;
+
+curtime = function () {
+    return (tstamp() - starttime)/1000;
+}
+
+starttime = tstamp();
+
+dancer = new Dancer();
+kick = dancer.createKick({
+    onKick: function () {
+	console.log("ONKICK");
+    },
+    offKick: function () {
+	console.log("OFFKICK");
+    }
+});
+
+dancer.onceAt( 0, function () {
+    kick.on();
+});
+
+//bd = new BeatDetektor(48,280);
+//bd2 = new BeatDetektor(48,280);
 
 var cht = new SmoothieChart();
 Meteor.defer( function () {
@@ -49,7 +81,7 @@ function convertToMono( input ) {
     "use strict";
 
     var f = 0;
-    Meteor.setInterval(function () {document.getElementById("f").innerHTML = f + " fps"; f = 0;}, 1000);
+    Meteor.setInterval(function () {framerate = f; document.getElementById("f").innerHTML = f + " fps"; f = 0;}, 1000);
 
     var div, audio, video, width, height, context;
     var bufidx = 0, buffers = [];
@@ -86,8 +118,10 @@ function convertToMono( input ) {
 	convertToMono( streamsource ).connect( analyser );
 	
 	audio.src = URL.createObjectURL(stream);
-	audio.play();
+//	audio.play();
 	audio.muted = true;
+
+	dancer.load({audio: URL.createObjectURL(stream)});
 
 	// Ready! Let's start drawing.
 	requestAnimationFrame(draw);
@@ -150,25 +184,116 @@ function convertToMono( input ) {
 	    size += foo;
 	}
 
-	aarray.push(size);
-	asum += size;
-	varray.push(nChanged);
-	vsum += nChanged;
-	psum += size * nChanged;
+	abuffer.push(Math.log(1+size)*100);
 
-	if (aarray.length > 100) {
+	if (abuffer.length > 3) {
+	    var dsize = abuffer.shift();
+	    aarray.push(dsize);
+	    asum += dsize;
+	    varray.push(nChanged);
+	    vsum += nChanged;
+	    psum += dsize * nChanged;
+	    
+//	    bd.process(curtime(), buf);
+//	    bd2.process(curtime, nChanged);
+	    
+	    times2.append(new Date().getTime(), dsize);
+	    times.append(new Date().getTime(), nChanged);
+	}
+	
+	if (aarray.length > 50) {
 	    var oldsize = aarray.shift();
 	    var oldnChanged = varray.shift();
 	    asum -= oldsize;
 	    vsum -= oldnChanged;
 	    psum -= oldsize*oldnChanged;
 	    
-	    var score = psum*10000/(vsum*asum);
-	    div.innerHTML = score;
-	}
+	    var score = psum*40000/(vsum*asum);
 
-	times2.append(new Date().getTime(), size);
-	times.append(new Date().getTime(), nChanged);
+	    var dft = new DFT(50, 10);
+	    dft.forward(aarray);
+	    var spectrum = dft.spectrum;
+	    foo = spectrum;
+
+	    var dft2 = new DFT(50, 10);
+	    dft2.forward(varray);
+	    var spectrum2 = dft2.spectrum;
+	    
+/*	    var abpm;
+	    var vbpm;
+	    var besti = 0;
+	    var bestvalue = 0;
+
+	    for (var i=10; i < spectrum.length; i++) {
+		if (spectrum[i] > bestvalue) {
+		    besti = i;
+		    bestvalue = spectrum[i];
+		}
+	    }
+	    abpm = Math.round(3 * besti * framerate / 10);
+	    
+	    bestvalue = 0;
+	    besti = 0;
+
+	    for (var i=10; i < spectrum2.length; i++) {
+		if (spectrum2[i] > bestvalue) {
+		    besti = i;
+		    bestvalue = spectrum2[i];
+		}
+	    }
+	    vbpm = Math.round(3 * besti * framerate / 10);
+*/
+
+	    var score;
+	    var asum = 0;
+	    var vsum = 0;
+	    var psum = 0;
+
+	    for (var i=4; i<spectrum.length; i++) {
+		asum += spectrum[i];
+		vsum += spectrum2[i];
+		psum += spectrum[i] * spectrum2[i];
+	    }
+
+	    var canvasEl = document.getElementById('acanvas'),
+	    ctx     = canvasEl.getContext( '2d' ),
+	    h       = canvasEl.height,
+	    w       = canvasEl.width,
+	    width   = 8,
+	    spacing = 0,
+	    count   = 100;
+	    
+	    ctx.fillStyle = "black";
+
+	    ctx.clearRect( 0, 0, w, h );
+	    for ( var i = 6, l = spectrum.length; i < l && i < count; i++ ) {
+		ctx.fillRect( i * ( spacing + width ), h, width, -Math.round(spectrum[i]/150 * h) );
+//		console.log(i * ( spacing + width ), h, width, spectrum[i]/1500 * h);
+	    }
+
+
+	    canvasEl = document.getElementById('vcanvas');
+	    ctx     = canvasEl.getContext( '2d' );
+	    ctx.fillStyle = "black";
+
+	    ctx.clearRect( 0, 0, w, h );
+	    for ( var i = 6, l = spectrum2.length; i < l && i < count; i++ ) {
+		ctx.fillRect( i * ( spacing + width ), h, width, -Math.round(spectrum2[i]/350 * h) );
+//		console.log(i * ( spacing + width ), h, width, spectrum[i]/1500 * h);
+	    }
+
+	    score = 900*psum /asum/vsum;
+	    totalscore += score;
+	    scorebuffer.push(score);
+	    
+	    if (scorebuffer.length > 50) {
+		totalscore -= scorebuffer.shift();
+		div.innerHTML = "Score: " + Math.round(totalscore/50);
+	    }
+
+	    
+	}
+	
     }
 
     function lightnessHasChanged(index, value) {
